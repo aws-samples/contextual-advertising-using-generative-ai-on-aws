@@ -10,7 +10,7 @@ In this project, we will do a deep dive into one of the new features of the [Med
 
 ### Watch the demo video
 
-[![Demo video](https://www.youtube.com/watch?v=Ys9PMP1Gi7Ag/0.jpg)](https://www.youtube.com/watch?v=Ys9PMP1Gi7Ag)
+[![Demo video](https://www.youtube.com/watch?v=s9PMP1Gi7Ag/0.jpg)](https://www.youtube.com/watch?v=s9PMP1Gi7Ag)
 
 ## Prerequisites to run the sample notebook
 
