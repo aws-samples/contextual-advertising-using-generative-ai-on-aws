@@ -10,8 +10,6 @@ In this project, we will do a deep dive into one of the new features of the [Med
 
 ### Watch the demo video
 
-https://www.youtube.com/watch?v=s9PMP1Gi7Ag
-
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=Ys9PMP1Gi7Ag
 " target="_blank"><img src="https://www.youtube.com/watch?v=s9PMP1Gi7Ag/0.jpg" 
 alt="IMAGE ALT TEXT HERE" width="240" height="180" border="10" /></a>
@@ -29,7 +27,7 @@ alt="IMAGE ALT TEXT HERE" width="240" height="180" border="10" /></a>
 The notebook for this sample runs well with the following SageMaker Studio configuration:
 
 - Image: Data Science 3.0
-- Instance Type: ml.m5.2xlarge (Recommended)
+- Instance Type: ml.t3.medium (Recommended)
 - Python version: 3.10
 
 ## Security
@@ -38,4 +36,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 ## License
 
-This library is licensed under the Apache-2.0 License. See the LICENSE file.
+See the [LICENSE](./LICENSE) file.
