@@ -19,7 +19,7 @@ def to_hhmmssms(milliseconds):
     return f"{hh:02d}:{mm:02d}:{ss:02d}.{ms:03d}"
 
 def parse_webvtt(file):
-    captions = webvtt.read('transcript.vtt')
+    captions = webvtt.read(file)
     captions = [{
         'text': caption.text,
         'start': caption.start,

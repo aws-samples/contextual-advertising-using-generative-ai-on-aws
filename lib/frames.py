@@ -1,23 +1,12 @@
 import os
-from shutil import rmtree
-from PIL import Image, ImageDraw
-from io import BytesIO
 import base64
-import json
-    
-def rmdir(directory):
-    try:
-        if os.path.isdir(directory):
-            rmtree(directory)
-    except Exception as e:
-        print(e)
-
-def mkdir(directory):
-    try:
-        if not os.path.isdir(directory):
-            os.mkdir(directory)
-    except Exception as e:
-        print(e)
+import copy
+from io import BytesIO
+from functools import cmp_to_key
+from PIL import Image, ImageDraw
+from IPython.display import display
+from lib import util
+from lib import embeddings
 
 def image_to_base64(image):
     buff = BytesIO()
@@ -40,13 +29,8 @@ def skip_frames(frames, max_frames = 80):
 def create_grid_image(image_files, max_ncol = 10, border_width = 2):
     should_resize = len(image_files) > 50
 
-    first_image = Image.open(image_files[0])
-    width, height = first_image.size
-
-    if should_resize:
-        width = width // 2
-        height = height // 2
-        first_image = first_image.resize((width, height))
+    with Image.open(image_files[0]) as image:
+        width, height = image.size
 
     ncol = max_ncol
     if len(image_files) < max_ncol:
@@ -87,3 +71,211 @@ def create_composite_images(frames):
         composite_images.append(composite_image)
 
     return composite_images
+
+def group_frames_to_shots(frame_embeddings, min_similarity = 0.80):
+    shots = []
+    current_shot = [frame_embeddings[0]]
+
+    # group frames based on the similarity
+    for i in range(1, len(frame_embeddings)):
+        prev = current_shot[-1]
+        cur = frame_embeddings[i]
+        prev_embedding = prev['embedding']
+        cur_embedding = cur['embedding']
+
+        similarity = embeddings.cosine_similarity(prev_embedding, cur_embedding)
+        cur['similarity'] = similarity
+
+        if similarity > min_similarity:
+            current_shot.append(cur)
+        else:
+            shots.append(current_shot)
+            current_shot = [cur]
+
+    if current_shot:
+        shots.append(current_shot)
+
+    frames_in_shots = []
+    for i in range(len(shots)):
+        shot = shots[i]
+        frames_ids = [frame['frame_no'] for frame in shot]
+        frames_in_shots.append({
+            'shot_id': i,
+            'frame_ids': frames_ids
+        })
+
+    return frames_in_shots
+
+
+def plot_shots(frame_embeddings, num_shots):
+    util.mkdir('shots')
+
+    shots = [[] for _ in range(num_shots)]
+    for frame in frame_embeddings:
+        shot_id = frame['shot_id']
+        file = frame['file']
+        shots[shot_id].append(file)
+
+    for i in range(len(shots)):
+        shot = shots[i]
+        num_frames = len(shot)
+        skipped_frames = skip_frames(shot)
+        grid_image = create_grid_image(skipped_frames)
+        w, h = grid_image.size
+        if h > 440:
+            grid_image = grid_image.resize((w // 2, h // 2))
+        w, h = grid_image.size
+        print(f"Shot #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
+        grid_image.save(f"shots/shot-{i:04d}.jpg")
+        display(grid_image)
+        grid_image.close()
+    print('====')
+
+def collect_similar_frames(frame_embeddings, frame_ids):
+    similar_frames = []
+    for frame_id in frame_ids:
+        similar_frames_ids = [frame['idx'] for frame in frame_embeddings[frame_id]['similar_frames']]
+        similar_frames.extend(similar_frames_ids)
+    # unique frames in shot
+    return sorted(list(set(similar_frames)))
+
+def collect_related_shots(frame_embeddings, frame_ids):
+    related_shots = []
+    for frame_id in frame_ids:
+        related_shots.append(frame_embeddings[frame_id]['shot_id'])
+    # unique frames in shot
+    return sorted(list(set(related_shots)))
+
+
+def group_shots_in_scenes(frames_in_shots):
+    scenes = [
+        [
+            min(frames_in_shot['related_shots']),
+            max(frames_in_shot['related_shots']),
+        ] for frames_in_shot in frames_in_shots
+    ]
+
+    scenes = sorted(scenes, key=cmp_to_key(embeddings.cmp_min_max))
+
+    stack = [scenes[0]]
+    for i in range(1, len(scenes)):
+        prev = stack[-1]
+        cur = scenes[i]
+        prev_min, prev_max = prev
+        cur_min, cur_max = cur
+
+        if cur_min >= prev_min and cur_min <= prev_max:
+            new_scene = [
+                min(cur_min, prev_min),
+                max(cur_max, prev_max),
+            ]
+            stack.pop()
+            stack.append(new_scene)
+            continue
+            
+        stack.append(cur)
+
+    return [{
+        'scene_id': i,
+        'shot_ids': stack[i],
+    } for i in range(len(stack))]
+
+def plot_scenes(frame_embeddings, num_scenes):
+    util.mkdir('scenes')
+
+    scenes = [[] for _ in range(num_scenes)]
+    for frame in frame_embeddings:
+        scene_id = frame['scene_id']
+        file = frame['file']
+        scenes[scene_id].append(file)
+
+    for i in range(len(scenes)):
+        scene = scenes[i]
+        num_frames = len(scene)
+        skipped_frames = skip_frames(scene)
+        grid_image = create_grid_image(skipped_frames)
+        w, h = grid_image.size
+        if h > 440:
+            grid_image = grid_image.resize((w // 2, h // 2))
+        w, h = grid_image.size
+        print(f"Scene #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
+        grid_image.save(f"scenes/scene-{i:04d}.jpg")
+        display(grid_image)
+        grid_image.close()
+    print('====')
+
+
+def make_chapter_item(chapter_id, scene_items, text = ''):
+    scene_ids = [scene['scene_id'] for scene in scene_items]
+    return {
+        'chapter_id': chapter_id,
+        'scene_ids': [min(scene_ids), max(scene_ids)],
+        'text': text,
+    }
+
+def group_scenes_in_chapters(conversations, shots_in_scenes, frames_in_shots):
+    scenes = copy.deepcopy(shots_in_scenes)
+
+    chapters = []
+    for conversation in conversations['chapters']:
+        start_ms = conversation['start_ms']
+        end_ms = conversation['end_ms']
+        text = conversation['reason']
+
+        stack = []
+        while len(scenes) > 0:
+            scene = scenes[0]
+            shot_min, shot_max = scene['shot_ids']
+            frame_start = min(frames_in_shots[shot_min]['frame_ids']) * 1000
+            frame_end = max(frames_in_shots[shot_max]['frame_ids']) * 1000
+
+            if frame_start > end_ms:
+                break
+
+            # scenes before any conversation starts
+            if frame_end < start_ms:
+                chapter = make_chapter_item(len(chapters), [scene])
+                chapters.append(chapter)
+                scenes.pop(0)
+                continue
+
+            stack.append(scene)
+            scenes.pop(0)
+
+        if stack:
+            chapter = make_chapter_item(len(chapters), stack, text)
+            chapters.append(chapter)
+
+    ## There could be more scenes without converations, append them
+    for scene in scenes:
+        chapter = make_chapter_item(len(chapters), [scene])
+        chapters.append(chapter)
+
+    return chapters
+
+def plot_chapters(frame_embeddings, num_chapters):
+    try:
+        os.mkdir('chapters')
+    except Exception as e:
+        print(e)
+
+    chapters = [[] for _ in range(num_chapters)]
+    for frame in frame_embeddings:
+        chapter_id = frame['chapter_id']
+        file = frame['file']
+        chapters[chapter_id].append(file)
+
+    for i in range(len(chapters)):
+        chapter = chapters[i]
+        num_frames = len(chapter)
+        skipped_frames = skip_frames(chapter)
+        grid_image = create_grid_image(skipped_frames)
+        w, h = grid_image.size
+        if h > 440:
+            grid_image = grid_image.resize((w // 2, h // 2))
+        w, h = grid_image.size
+        print(f"Chapter #{i:04d}: {num_frames} frames ({len(skipped_frames)} drawn) [{w}x{h}]")
+        grid_image.save(f"chapters/chapter-{i:04d}.jpg")
+        display(grid_image)
+        grid_image.close()
+    print('====')
