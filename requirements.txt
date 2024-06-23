@@ -1,0 +1,5 @@
+faiss-cpu==1.8.0
+ffmpeg==1.4
+json_repair==0.21.0
+termcolor==2.4.0
+webvtt-py==0.5.1
