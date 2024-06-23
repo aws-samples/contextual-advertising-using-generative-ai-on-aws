@@ -13,4 +13,4 @@ shots/
 **/*.mp4
 **/*.json
 **/*.vtt
-**/*.txt
+*/*.txt
